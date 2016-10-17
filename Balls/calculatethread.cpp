@@ -2,6 +2,7 @@
 #include "qmath.h"
 #include <QDebug>
 #include "consts.h"
+#include <QTime>
 
 
 
@@ -13,51 +14,65 @@ CalculateThread::CalculateThread(QObject* parent) : QThread(parent)
 
 void CalculateThread::run()
 {
+    int cycle=0;
+    QTime time;
 
     while(!stopCalculate)
     {
+        if(cycle==0)
+            time.start();
         mutex.lock();
         QList<Ball*> list = _itemsListMap.keys();
+
         foreach (Ball* ball, list)
         {
             QPointF curPosition = _itemsListMap.value(ball);
             if(ball->isMoving())
                 continue;
-            double forceX = 0.0;
-            double forceY = 0.0;
-            double forceXY = 0.0;
+            double forceX;
+            double forceY;
+            double forceXY;
             double sinus;
             double cosinus;
             double realForce;
             QPointF newPos=curPosition;
+            double dx = 0.0;
+            double dy = 0.0;
             foreach(Ball* ball2, list)
             {
                 if(ball2==ball || ball2->isMoving())
                     continue;
-                forceX+=_itemsListMap.value(ball2).x()-curPosition.x();
-                forceY+=_itemsListMap.value(ball2).y()-curPosition.y();
+                forceX=_itemsListMap.value(ball2).x()-curPosition.x();
+                forceY=_itemsListMap.value(ball2).y()-curPosition.y();
+                forceXY = sqrt(pow(forceX,2)+pow(forceY,2));
+                if(forceXY>1)
+                {
+                    sinus = forceY/forceXY;
+                    cosinus = forceX/forceXY;
+                    realForce = 1.0/forceXY - 1/(pow(forceXY,2));
+                    dx += realForce*cosinus*FORCE_KOEF;
+                    dy += realForce*sinus*FORCE_KOEF;
+                }
             }
-            forceXY = sqrt(pow(forceX,2)+pow(forceY,2));
-            sinus = forceY/forceXY;
-            cosinus = forceX/forceXY;
-            if(forceXY>1)
-            {
-                realForce = 1.0/forceXY - 1/(pow(forceXY,2));
-                double dx = realForce*cosinus;
-                double dy = realForce*sinus;
-                dx=dx*FORCE_KOEF;
-                dy=dy*FORCE_KOEF;
-                newPos.setX(curPosition.x()+dx);
-                newPos.setY(curPosition.y()+dy);
-
-            }
+            newPos.setX(curPosition.x()+dx);
+            newPos.setY(curPosition.y()+dy);
 
             emit sg_finishCalculate(ball,newPos);
             _itemsListMap.insert(ball,newPos);
         }
         mutex.unlock();
-    }
+        cycle++;
+        if(cycle == CYCLES_COUNT_SLEEP)
+        {
+            cycle=0;
+            int msec =time.elapsed();
+            if(msec<CYCLES_TIME_SLEEP)
+            {
+                msleep(CYCLES_TIME_SLEEP-msec);
+            }
+        }
 
+    }
 
 }
 
